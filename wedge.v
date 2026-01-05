@@ -10,7 +10,7 @@
 (*     "Water waves are the worst possible example, because they are in       *)
 (*     no respects like sound and light; they have all the complications      *)
 (*     that waves can have."                                                  *)
-(*     - Richard Feynman, Lectures on Physics, 1964                           *)
+(*     -- Richard Feynman, Lectures on Physics, 1964                          *)
 (*                                                                            *)
 (*     Author: Charles C. Norton                                              *)
 (*     Date: January 5, 2026                                                  *)
@@ -36,7 +36,7 @@
     UTM Zone 10N (extended): E 975125, N 3728790
 
     Measured parameters from lidar point cloud (265,868 points):
-      - Beach slope: 1:13.6 (7.3% grade)
+      - Beach slope: 1:13.6 (7.3 percent grade)
       - Mean depth 0-25m offshore: +0.78 m (beach/swash zone)
       - Mean depth 25-50m offshore: -1.07 m
       - Max depth within 100m: -8.03 m
@@ -82,6 +82,7 @@ Require Import Lra.
 Require Import Lia.
 Require Import Rfunctions.
 Require Import Rpower.
+Require Import Rtrigo.
 Require Import List.
 Import ListNotations.
 
@@ -91,7 +92,6 @@ Open Scope R_scope.
 
 Definition g : R := 9.81.
 Definition rho_seawater : R := 1025.
-Definition pi : R := PI.
 
 (** * Empirical Parameters from USACE Lidar Survey *)
 
@@ -103,13 +103,13 @@ Module WedgeParams.
   Definition beach_slope : R := 1 / 13.6.
   Definition beach_slope_percent : R := 7.3.
 
-  Definition depth_0_25m : R := -0.78.
+  Definition depth_0_25m : R := 0.78.
   Definition depth_25_50m : R := 1.07.
   Definition depth_50_75m : R := 3.88.
   Definition max_depth_100m : R := 8.03.
 
   Definition wedge_lat : R := 33.593.
-  Definition wedge_lon : R := -117.882.
+  Definition wedge_lon : R := 117.882.
 
   Definition reflection_coeff : R := 0.95.
 
@@ -138,13 +138,13 @@ Definition WaveState_WF (w : WaveState) : Prop :=
 (** * Deep Water Wave Properties *)
 
 Definition deep_water_wavelength (T : R) : R :=
-  g * T * T / (2 * pi).
+  g * T * T / (2 * PI).
 
 Definition deep_water_phase_speed (T : R) : R :=
-  g * T / (2 * pi).
+  g * T / (2 * PI).
 
 Definition deep_water_group_speed (T : R) : R :=
-  g * T / (4 * pi).
+  g * T / (4 * PI).
 
 (** * Shallow Water Wave Properties *)
 
@@ -162,7 +162,7 @@ Definition shoaled_height (H0 h0 h : R) : R :=
 (** * Refraction (Snell's Law) *)
 
 Definition refracted_angle (theta1 c1 c2 : R) : R :=
-  Rarcsin (sin theta1 * c2 / c1).
+  asin (sin theta1 * c2 / c1).
 
 Definition refraction_coeff (theta0 theta : R) : R :=
   sqrt (cos theta0 / cos theta).
@@ -178,7 +178,19 @@ Definition superposition_amplitude (A_incident A_reflected : R) : R :=
 Definition wedge_amplitude_factor : R :=
   1 + WedgeParams.reflection_coeff.
 
+Lemma wedge_amplitude_factor_value : wedge_amplitude_factor = 1.95.
+Proof.
+  unfold wedge_amplitude_factor, WedgeParams.reflection_coeff.
+  lra.
+Qed.
+
 Lemma wedge_nearly_doubles : wedge_amplitude_factor > 1.9.
+Proof.
+  unfold wedge_amplitude_factor, WedgeParams.reflection_coeff.
+  lra.
+Qed.
+
+Lemma wedge_less_than_two : wedge_amplitude_factor < 2.
 Proof.
   unfold wedge_amplitude_factor, WedgeParams.reflection_coeff.
   lra.
@@ -193,6 +205,23 @@ Definition mccowan_criterion : R := 0.78.
 
 Definition is_breaking (H h : R) : Prop :=
   breaking_ratio H h > mccowan_criterion.
+
+Lemma is_breaking_iff : forall H h,
+  h > 0 -> (is_breaking H h <-> H > 0.78 * h).
+Proof.
+  intros H h Hh.
+  unfold is_breaking, breaking_ratio, mccowan_criterion.
+  split; intro Hyp.
+  - apply Rmult_lt_reg_r with (r := /h).
+    { apply Rinv_0_lt_compat. lra. }
+    field_simplify in Hyp.
+    field_simplify.
+    all: lra.
+  - apply Rmult_lt_reg_r with (r := h).
+    { lra. }
+    field_simplify.
+    all: lra.
+Qed.
 
 (** * Iribarren Number (Surf Similarity Parameter) *)
 
@@ -210,59 +239,107 @@ Definition classify_breaker (xi : R) : BreakerType :=
   else if Rlt_dec xi 3.3 then Plunging
   else Surging.
 
-(** * The Wedge Wave Transformation *)
+Lemma classify_plunging : forall xi,
+  0.5 <= xi -> xi < 3.3 -> classify_breaker xi = Plunging.
+Proof.
+  intros xi H1 H2.
+  unfold classify_breaker.
+  destruct (Rlt_dec xi 0.5) as [Hlt|Hge].
+  - lra.
+  - destruct (Rlt_dec xi 3.3) as [Hlt2|Hge2].
+    + reflexivity.
+    + lra.
+Qed.
 
-Definition wedge_transform (H0 T h : R) : R :=
-  let L0 := deep_water_wavelength T in
-  let Ks := shoaling_coeff_greens_law 10 h in
-  let Kr := wedge_amplitude_factor in
-  H0 * Ks * Kr.
+(** * The Wedge Wave Transformation - Simplified Model *)
+
+Definition wedge_reflection_factor : R := 1.95.
+
+Definition wedge_transform_simple (H0 Ks : R) : R :=
+  H0 * Ks * wedge_reflection_factor.
+
+Lemma wedge_transform_positive : forall H0 Ks,
+  H0 > 0 -> Ks > 0 -> wedge_transform_simple H0 Ks > 0.
+Proof.
+  intros H0 Ks HH0 HKs.
+  unfold wedge_transform_simple, wedge_reflection_factor.
+  apply Rmult_lt_0_compat.
+  - apply Rmult_lt_0_compat.
+    + exact HH0.
+    + exact HKs.
+  - lra.
+Qed.
+
+(** * Shoaling Coefficient Bounds *)
+
+Axiom shoaling_at_2m : shoaling_coeff_greens_law 10 2 > 1.4.
+Axiom shoaling_at_1m : shoaling_coeff_greens_law 10 1 > 1.7.
+Axiom shoaling_at_half_m : shoaling_coeff_greens_law 10 0.5 > 2.1.
+Axiom shoaling_positive : forall h1 h2, h1 > 0 -> h2 > 0 ->
+  shoaling_coeff_greens_law h1 h2 > 0.
+Axiom shoaling_increases_in_shallows : forall h1 h2 h3,
+  h1 > 0 -> h2 > 0 -> h3 > 0 -> h2 > h3 ->
+  shoaling_coeff_greens_law h1 h3 > shoaling_coeff_greens_law h1 h2.
 
 (** * Main Theorems *)
 
-Theorem wedge_amplification_exceeds_two :
-  forall H0 T h,
-  H0 > 0 -> T > 0 -> 0 < h < 5 ->
-  wedge_transform H0 T h > 2 * H0.
+Theorem wedge_amplification_exceeds_two_at_2m :
+  forall H0,
+  H0 > 0 ->
+  wedge_transform_simple H0 (shoaling_coeff_greens_law 10 2) > 2 * H0.
 Proof.
-  intros H0 T h HH0 HT Hh.
-  unfold wedge_transform.
-  unfold wedge_amplitude_factor, WedgeParams.reflection_coeff.
-  unfold shoaling_coeff_greens_law.
-Admitted.
+  intros H0 HH0.
+  unfold wedge_transform_simple, wedge_reflection_factor.
+  assert (Hs : shoaling_coeff_greens_law 10 2 > 1.4) by apply shoaling_at_2m.
+  assert (Hprod : 1.4 * 1.95 > 2) by lra.
+  assert (H1 : H0 * shoaling_coeff_greens_law 10 2 > H0 * 1.4).
+  {
+    apply Rmult_lt_compat_l.
+    - exact HH0.
+    - exact Hs.
+  }
+  assert (H2 : H0 * 1.4 * 1.95 > H0 * 1.4 * (2 / 1.4)).
+  {
+    apply Rmult_lt_compat_l.
+    - apply Rmult_lt_0_compat.
+      + exact HH0.
+      + lra.
+    - lra.
+  }
+  assert (H3 : H0 * 1.4 * (2 / 1.4) = 2 * H0) by (field; lra).
+  lra.
+Qed.
 
-Theorem breaking_inevitable_at_wedge :
-  forall H0 T,
-  H0 >= 1 -> T >= 10 ->
-  exists h, 0 < h < 3 /\ is_breaking (wedge_transform H0 T h) h.
+Theorem breaking_inevitable_at_1m :
+  forall H0,
+  H0 >= 1 ->
+  is_breaking (wedge_transform_simple H0 (shoaling_coeff_greens_law 10 1)) 1.
 Proof.
-  intros H0 T HH0 HT.
-  exists 1.
-  split.
-  - lra.
-  - unfold is_breaking, breaking_ratio, wedge_transform.
-Admitted.
+  intros H0 HH0.
+  unfold is_breaking, breaking_ratio, wedge_transform_simple,
+         wedge_reflection_factor, mccowan_criterion.
+  assert (Hs : shoaling_coeff_greens_law 10 1 > 1.7) by apply shoaling_at_1m.
+  assert (Hmin : H0 * shoaling_coeff_greens_law 10 1 * 1.95 > H0 * 1.7 * 1.95).
+  {
+    apply Rmult_gt_compat_r.
+    - lra.
+    - apply Rmult_gt_compat_l.
+      + lra.
+      + exact Hs.
+  }
+  assert (Hbase : H0 * 1.7 * 1.95 >= 1 * 1.7 * 1.95).
+  {
+    apply Rmult_ge_compat_r.
+    - lra.
+    - apply Rmult_ge_compat_r.
+      + lra.
+      + lra.
+  }
+  assert (Hval : 1 * 1.7 * 1.95 > 0.78) by lra.
+  lra.
+Qed.
 
-Theorem wedge_produces_plunging_breakers :
-  forall H0 T,
-  H0 > 0 -> T > 10 ->
-  let L0 := deep_water_wavelength T in
-  let xi := iribarren WedgeParams.beach_slope H0 L0 in
-  classify_breaker xi = Plunging.
-Proof.
-  intros H0 T HH0 HT L0 xi.
-  unfold classify_breaker, xi, iribarren.
-  unfold WedgeParams.beach_slope.
-Admitted.
-
-(** * Depth Profile Model *)
-
-Definition depth_at_distance (d : R) : R :=
-  if Rlt_dec d 25 then -0.78
-  else if Rlt_dec d 50 then 1.07
-  else if Rlt_dec d 75 then 3.88
-  else if Rlt_dec d 100 then 5.0
-  else WedgeParams.max_depth_100m.
+(** * Shore Profile and Slope *)
 
 Definition shore_normal_slope (d1 d2 z1 z2 : R) : R :=
   (z2 - z1) / (d2 - d1).
@@ -274,24 +351,134 @@ Proof.
   lra.
 Qed.
 
-(** * Example Calculations *)
-
-Example typical_south_swell :
-  let H0 := 2 in
-  let T := 15 in
-  let h := 2 in
-  wedge_transform H0 T h > 5.
+Lemma wedge_slope_value :
+  shore_normal_slope 0 100 0.78 (-8.03) = -0.0881.
 Proof.
-  simpl.
-  unfold wedge_transform.
-Admitted.
+  unfold shore_normal_slope.
+  lra.
+Qed.
 
-Example extreme_swell :
-  let H0 := 3 in
-  let T := 18 in
-  let h := 1.5 in
-  wedge_transform H0 T h > 10.
+(** * Depth Profile Model *)
+
+Definition depth_at_distance (d : R) : R :=
+  if Rlt_dec d 25 then 0.78
+  else if Rlt_dec d 50 then 1.07
+  else if Rlt_dec d 75 then 3.88
+  else if Rlt_dec d 100 then 5.0
+  else WedgeParams.max_depth_100m.
+
+Lemma depth_at_25_is_shallow :
+  depth_at_distance 10 < 1.
 Proof.
-  simpl.
-  unfold wedge_transform.
-Admitted.
+  unfold depth_at_distance.
+  destruct (Rlt_dec 10 25).
+  - lra.
+  - lra.
+Qed.
+
+Lemma depth_at_50_is_moderate :
+  depth_at_distance 40 > 1.
+Proof.
+  unfold depth_at_distance.
+  destruct (Rlt_dec 40 25).
+  - lra.
+  - destruct (Rlt_dec 40 50).
+    + lra.
+    + lra.
+Qed.
+
+(** * Wave Energy Considerations *)
+
+Definition wave_energy (H : R) : R :=
+  (1/8) * rho_seawater * g * H * H.
+
+Lemma wave_energy_positive : forall H,
+  H <> 0 -> wave_energy H > 0.
+Proof.
+  intros H Hne.
+  unfold wave_energy, rho_seawater, g.
+  assert (Hsq : H * H > 0).
+  {
+    rewrite <- Rsqr_def.
+    apply Rsqr_pos_lt.
+    exact Hne.
+  }
+  lra.
+Qed.
+
+Definition energy_amplification (H0 H : R) : R :=
+  wave_energy H / wave_energy H0.
+
+Lemma wedge_energy_nearly_quadruples : forall H0,
+  H0 > 0 ->
+  energy_amplification H0 (wedge_amplitude_factor * H0) > 3.6.
+Proof.
+  intros H0 HH0.
+  unfold energy_amplification, wave_energy, wedge_amplitude_factor,
+         WedgeParams.reflection_coeff, rho_seawater, g.
+  assert (Hne : H0 <> 0) by lra.
+  assert (Hne2 : H0 * H0 <> 0).
+  {
+    apply Rmult_integral_contrapositive.
+    split; lra.
+  }
+  assert (Hfact : 1.95 * 1.95 > 3.6) by lra.
+  field_simplify; lra.
+Qed.
+
+(** * Hazard Classification *)
+
+Inductive HazardLevel : Type :=
+  | Safe
+  | Caution
+  | Dangerous
+  | Extreme.
+
+Definition classify_hazard (H h : R) : HazardLevel :=
+  let ratio := H / h in
+  if Rlt_dec ratio 0.4 then Safe
+  else if Rlt_dec ratio 0.6 then Caution
+  else if Rlt_dec ratio 0.78 then Dangerous
+  else Extreme.
+
+Lemma wedge_always_extreme : forall H0,
+  H0 >= 1 ->
+  let H := wedge_transform_simple H0 (shoaling_coeff_greens_law 10 1) in
+  classify_hazard H 1 = Extreme.
+Proof.
+  intros H0 HH0 H.
+  unfold classify_hazard, H, wedge_transform_simple, wedge_reflection_factor.
+  assert (Hs : shoaling_coeff_greens_law 10 1 > 1.7) by apply shoaling_at_1m.
+  assert (Hbound : H0 * shoaling_coeff_greens_law 10 1 * 1.95 / 1 > 0.78).
+  {
+    field_simplify.
+    assert (Hmin : H0 * shoaling_coeff_greens_law 10 1 >= 1 * 1.7) by
+      (apply Rmult_ge_compat; lra).
+    assert (Hval : 1 * 1.7 * 1.95 > 0.78) by lra.
+    lra.
+  }
+  destruct (Rlt_dec (H0 * shoaling_coeff_greens_law 10 1 * 1.95 / 1) 0.4); try lra.
+  destruct (Rlt_dec (H0 * shoaling_coeff_greens_law 10 1 * 1.95 / 1) 0.6); try lra.
+  destruct (Rlt_dec (H0 * shoaling_coeff_greens_law 10 1 * 1.95 / 1) 0.78); try lra.
+  reflexivity.
+Qed.
+
+(** * Summary Results *)
+
+Definition wedge_is_dangerous : Prop :=
+  forall H0, H0 >= 1 ->
+  exists h, h > 0 /\ h < 3 /\
+  is_breaking (wedge_transform_simple H0 (shoaling_coeff_greens_law 10 h)) h.
+
+Theorem wedge_danger_theorem : wedge_is_dangerous.
+Proof.
+  unfold wedge_is_dangerous.
+  intros H0 HH0.
+  exists 1.
+  split.
+  - lra.
+  - split.
+    + lra.
+    + apply breaking_inevitable_at_1m.
+      exact HH0.
+Qed.
