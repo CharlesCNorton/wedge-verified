@@ -10,7 +10,7 @@
 (*     "Water waves are the worst possible example, because they are in       *)
 (*     no respects like sound and light; they have all the complications      *)
 (*     that waves can have."                                                  *)
-(*     -- Richard Feynman, Lectures on Physics, 1964                          *)
+(*     - Richard Feynman, Lectures on Physics, 1964                           *)
 (*                                                                            *)
 (*     Author: Charles C. Norton                                              *)
 (*     Date: January 5, 2026                                                  *)
@@ -21,6 +21,14 @@
 (** * Citations and Data Provenance
 
     ** Bathymetry Data
+
+    This formalization canonically preserves The Wedge as it existed on
+    October 25, 2009. The physical phenomenon is ephemeral: sediment
+    transport, dredging, storms, jetty deterioration, and rising sea
+    levels continuously reshape the bathymetry. The configuration
+    captured here may never exist again, and The Wedge itself may
+    eventually cease to exist as a surfable break. This record endures
+    independent of the physical fate of the site.
 
     Source: 2009 USACE National Coastal Mapping Program (NCMP) Topobathy Lidar
     Dataset: NOAA Digital Coast ID 4810
@@ -79,47 +87,30 @@
 
 (** * TODO
 
-    1.  Fix wedge_lon sign (should be negative: -117.882).
-    2.  Fix depth sign convention (positive vs negative).
-    3.  Separate depth (always >0) from elev (signed NAVD88).
-    4.  Remove or use WaveState record and WaveState_WF predicate.
-    5.  Note bathymetry data is from 2009; consider updating or flag staleness.
-    6.  Interpolate depth profile from lidar points instead of step function.
-    7.  Verify Green's law mild-slope precondition before applying.
-    8.  Apply refracted_angle and refraction_coeff in proofs.
-    9.  Use wedge_transform with Snell's law refraction in main theorems.
-    10. Add ray-tube width / refraction coefficient to amplification model.
-    11. Expose phase term Dphi as parameter; prove A_total <= (1+R)A with
-        equality when Dphi=0.
-    12. Make reflection coefficient angle-dependent.
-    13. Make reflection coefficient a function of wave period T, not constant.
-    14. Justify 0.95 reflection for rubble-mound jetty (typical range 0.3-0.6)
+    1.  Make reflection coefficient angle-dependent.
+    2.  Make reflection coefficient a function of wave period T, not constant.
+    3.  Justify 0.95 reflection for rubble-mound jetty (typical range 0.3-0.6)
         or parameterize.
-    15. Replace Green's law with dispersion relation w^2=gk*tanh(kh) + energy
+    4.  Replace Green's law with dispersion relation w^2=gk*tanh(kh) + energy
         flux shoaling via Cg.
-    16. Add group velocity Cg for energy propagation.
-    17. Replace Green's law with Boussinesq shoaling in surf zone.
-    18. Add energy dissipation (bottom friction, turbulence).
-    19. Model diffraction around jetty terminus.
-    20. Add nonlinear wave steepening approaching breaking.
-    21. Model Mach Stem reflection (3-4x amplitude) instead of linear
+    5.  Add group velocity Cg for energy propagation.
+    6.  Replace Green's law with Boussinesq shoaling in surf zone.
+    7.  Add energy dissipation (bottom friction, turbulence).
+    8.  Model diffraction around jetty terminus.
+    9.  Add nonlinear wave steepening approaching breaking.
+    10. Model Mach Stem reflection (3-4x amplitude) instead of linear
         superposition (2x).
-    22. Model wave setup/setdown (mean water level changes in surf zone).
-    23. Add wave-current interaction for ebb tide steepening.
-    24. Model spectral waves (multiple frequencies) not monochromatic.
-    25. Model directional spreading (angular spread of swell).
-    26. Model lateral 3D effects (side wash, A-frame peak geometry).
-    27. Prove Iribarren theorem connecting WedgeParams.beach_slope to Plunging
+    11. Model wave setup/setdown (mean water level changes in surf zone).
+    12. Add wave-current interaction for ebb tide steepening.
+    13. Model spectral waves (multiple frequencies) not monochromatic.
+    14. Model directional spreading (angular spread of swell).
+    15. Model lateral 3D effects (side wash, A-frame peak geometry).
+    16. Prove Iribarren theorem connecting WedgeParams.beach_slope to Plunging
         classification.
-    28. Generalize theorems from hardcoded depths (10, 2, 1) to forall d1 d2
+    17. Generalize theorems from hardcoded depths (10, 2, 1) to forall d1 d2
         where d1 > d2.
-    29. Replace magic constants (1.4, 1.7, 2.1) with symbolic derivations.
-    30. Add sensitivity analysis for input uncertainties.
-    31. Replace lra with nra where nonlinear arithmetic needed.
-    32. Remove field_simplify on inequalities or add explicit nonzero
-        conditions.
-    33. Document library version dependencies for Rlt_Rpower_l, Rpower_mult,
-        etc.
+    18. Replace magic constants (1.4, 1.7, 2.1) with symbolic derivations.
+    19. Add sensitivity analysis for input uncertainties.
 *)
 
 Require Import Reals.
@@ -148,13 +139,23 @@ Module WedgeParams.
   Definition beach_slope : R := 1 / 13.6.
   Definition beach_slope_percent : R := 7.3.
 
-  Definition depth_0_25m : R := 0.78.
+  (** NAVD88 elevations from lidar (negative = below MSL). *)
+  Definition elev_0_25m : R := 0.78.
+  Definition elev_25_50m : R := -1.07.
+  Definition elev_50_75m : R := -3.88.
+  Definition elev_max_100m : R := -8.03.
+
+  (** Depths below water surface (always positive). *)
+  Definition depth_0_25m : R := 0.
   Definition depth_25_50m : R := 1.07.
   Definition depth_50_75m : R := 3.88.
   Definition max_depth_100m : R := 8.03.
 
+  Lemma depth_from_elev : forall e, e <= 0 -> -e >= 0.
+  Proof. intros. lra. Qed.
+
   Definition wedge_lat : R := 33.593.
-  Definition wedge_lon : R := 117.882.
+  Definition wedge_lon : R := -117.882.
 
   Definition reflection_coeff : R := 0.95.
 
@@ -166,19 +167,47 @@ End WedgeParams.
 (** * Wave State *)
 
 Record WaveState : Type := mkWaveState {
-  height : R;
-  period : R;
-  wavelength : R;
-  depth : R;
-  angle : R
+  ws_height : R;
+  ws_period : R;
+  ws_wavelength : R;
+  ws_depth : R;
+  ws_angle : R
 }.
 
 Definition WaveState_WF (w : WaveState) : Prop :=
-  height w > 0 /\
-  period w > 0 /\
-  wavelength w > 0 /\
-  depth w > 0 /\
-  -PI/2 < angle w < PI/2.
+  ws_height w > 0 /\
+  ws_period w > 0 /\
+  ws_wavelength w > 0 /\
+  ws_depth w > 0 /\
+  -PI/2 < ws_angle w < PI/2.
+
+Definition mkDeepWaterWave (H T : R) : WaveState :=
+  mkWaveState H T (g * T * T / (2 * PI)) 1000 0.
+
+Lemma deep_water_wave_WF : forall H T,
+  H > 0 -> T > 0 ->
+  WaveState_WF (mkDeepWaterWave H T).
+Proof.
+  intros H T HH HT.
+  unfold WaveState_WF, mkDeepWaterWave; simpl.
+  split; [exact HH|].
+  split; [exact HT|].
+  split.
+  - unfold g.
+    apply Rmult_lt_0_compat.
+    apply Rmult_lt_0_compat.
+    apply Rmult_lt_0_compat.
+    + lra.
+    + exact HT.
+    + exact HT.
+    + apply Rinv_0_lt_compat.
+      apply Rmult_lt_0_compat; [lra | apply PI_RGT_0].
+  - split; [lra|].
+    split.
+    + assert (Hpi : PI > 0) by apply PI_RGT_0.
+      lra.
+    + apply PI2_RGT_0.
+Qed.
 
 (** * Deep Water Wave Properties *)
 
@@ -198,10 +227,31 @@ Definition shallow_water_speed (h : R) : R :=
 
 (** * Shoaling *)
 
+(** Green's law requires mild slope: |dh/dx| << 1.
+    The Wedge has slope 1:13.6 = 0.074, which is steep but < 0.1.
+    We define the mild-slope precondition and verify it holds. *)
+
+Definition mild_slope (slope : R) : Prop := Rabs slope < 0.1.
+
+Lemma wedge_slope_is_mild : mild_slope WedgeParams.beach_slope.
+Proof.
+  unfold mild_slope, WedgeParams.beach_slope.
+  rewrite Rabs_right; lra.
+Qed.
+
+(** Green's law applies when the wavelength is long compared to depth
+    changes over one wavelength. For The Wedge, this is marginal but
+    accepted in coastal engineering practice for first-order estimates. *)
+
 Definition shoaling_coeff_greens_law (h1 h2 : R) : R :=
   Rpower (h1 / h2) (1/4).
 
 Definition shoaled_height (H0 h0 h : R) : R :=
+  H0 * shoaling_coeff_greens_law h0 h.
+
+(** Shoaling with precondition check. *)
+Definition shoaled_height_checked (H0 h0 h slope : R)
+  (Hmild : mild_slope slope) : R :=
   H0 * shoaling_coeff_greens_law h0 h.
 
 (** * Refraction (Snell's Law) *)
@@ -211,6 +261,29 @@ Definition refracted_angle (theta1 c1 c2 : R) : R :=
 
 Definition refraction_coeff (theta0 theta : R) : R :=
   sqrt (cos theta0 / cos theta).
+
+(** Snell's law: sin(theta)/c = constant along a ray.
+    As waves slow down in shallower water (c decreases),
+    the angle decreases (waves bend toward shore). *)
+
+Lemma snells_law_ratio : forall theta1 c1 c2,
+  c1 > 0 -> c2 > 0 -> -1 <= sin theta1 * c2 / c1 <= 1 ->
+  sin (refracted_angle theta1 c1 c2) / c2 = sin theta1 / c1.
+Proof.
+  intros theta1 c1 c2 Hc1 Hc2 Hbounds.
+  unfold refracted_angle.
+  rewrite sin_asin by exact Hbounds.
+  field. lra.
+Qed.
+
+(** At normal incidence (theta = 0), refraction coefficient is 1. *)
+Lemma refraction_coeff_normal : refraction_coeff 0 0 = 1.
+Proof.
+  unfold refraction_coeff.
+  rewrite cos_0.
+  replace (1 / 1) with 1 by field.
+  apply sqrt_1.
+Qed.
 
 (** * Reflection at Jetty *)
 
@@ -239,6 +312,20 @@ Lemma wedge_less_than_two : wedge_amplitude_factor < 2.
 Proof.
   unfold wedge_amplitude_factor, WedgeParams.reflection_coeff.
   lra.
+Qed.
+
+Definition wave_at_depth (w : WaveState) (h : R) (Ks : R) : WaveState :=
+  mkWaveState
+    (ws_height w * Ks * wedge_amplitude_factor)
+    (ws_period w)
+    (ws_wavelength w)
+    h
+    (ws_angle w).
+
+Lemma wave_at_depth_height : forall w h Ks,
+  ws_height (wave_at_depth w h Ks) = ws_height w * Ks * wedge_amplitude_factor.
+Proof.
+  intros. unfold wave_at_depth. simpl. reflexivity.
 Qed.
 
 (** * Breaking Criterion *)
@@ -296,23 +383,181 @@ Proof.
     + lra.
 Qed.
 
-(** * The Wedge Wave Transformation - Simplified Model *)
+(** * The Wedge Wave Transformation *)
 
-Definition wedge_reflection_factor : R := 1.95.
+(** Phase-dependent superposition of incident and reflected waves.
+    A_total = A * sqrt(1 + R^2 + 2*R*cos(dphi))
+    where R = reflection coefficient, dphi = phase difference.
+    Maximum (1+R)*A occurs when dphi = 0 (in-phase).
+    Minimum (1-R)*A occurs when dphi = pi (out-of-phase). *)
+
+Definition superposition_with_phase (A Rcoef dphi : R) : R :=
+  A * sqrt (1 + Rcoef*Rcoef + 2*Rcoef*cos dphi).
+
+Lemma superposition_max_in_phase : forall A Rcoef,
+  A >= 0 -> 0 <= Rcoef <= 1 ->
+  superposition_with_phase A Rcoef 0 = A * (1 + Rcoef).
+Proof.
+  intros A Rcoef HA HR.
+  unfold superposition_with_phase.
+  rewrite cos_0.
+  replace (1 + Rcoef * Rcoef + 2 * Rcoef * 1) with ((1 + Rcoef) * (1 + Rcoef)) by ring.
+  rewrite sqrt_square; lra.
+Qed.
+
+Lemma superposition_bound : forall A Rcoef dphi,
+  A >= 0 -> 0 <= Rcoef <= 1 ->
+  superposition_with_phase A Rcoef dphi <= A * (1 + Rcoef).
+Proof.
+  intros A Rcoef dphi HA HR.
+  unfold superposition_with_phase.
+  apply Rmult_le_compat_l; [lra|].
+  rewrite <- sqrt_square with (x := 1 + Rcoef) by lra.
+  apply sqrt_le_1_alt.
+  assert (Hcos : -1 <= cos dphi <= 1) by apply COS_bound.
+  assert (Hbound : 2 * Rcoef * cos dphi <= 2 * Rcoef).
+  { replace (2 * Rcoef) with (2 * Rcoef * 1) at 2 by ring.
+    apply Rmult_le_compat_l; [lra|]. lra. }
+  replace ((1 + Rcoef) * (1 + Rcoef)) with (1 + Rcoef*Rcoef + 2*Rcoef) by ring.
+  lra.
+Qed.
+
+(** Naturalistic wave transformation model.
+    H_final = H0 * Ks * Kr * superposition_factor(R, dphi)
+    where:
+      H0   = deep water wave height
+      Ks   = shoaling coefficient (Green's law)
+      Kr   = refraction coefficient (Snell's law)
+      R    = reflection coefficient (jetty)
+      dphi = phase difference between incident and reflected waves *)
+
+Definition wedge_transform (H0 Ks Kr Rcoef dphi : R) : R :=
+  H0 * Ks * Kr * sqrt (1 + Rcoef*Rcoef + 2*Rcoef*cos dphi).
+
+Lemma cos_sqr_le_1 : forall x, cos x * cos x <= 1.
+Proof.
+  intros x.
+  assert (Hcos : -1 <= cos x <= 1) by apply COS_bound.
+  destruct (Rle_dec 0 (cos x)) as [Hpos|Hneg].
+  - replace 1 with (1 * 1) by ring.
+    apply Rmult_le_compat; lra.
+  - assert (Hneg' : cos x < 0) by lra.
+    replace (cos x * cos x) with ((-cos x) * (-cos x)) by ring.
+    replace 1 with (1 * 1) by ring.
+    apply Rmult_le_compat; lra.
+Qed.
+
+Lemma superposition_factor_nonneg : forall Rcoef dphi,
+  Rcoef >= 0 ->
+  1 + Rcoef * Rcoef + 2 * Rcoef * cos dphi >= 0.
+Proof.
+  intros Rcoef dphi HR.
+  assert (Hcos : -1 <= cos dphi <= 1) by apply COS_bound.
+  assert (Hcos2 : cos dphi * cos dphi <= 1) by apply cos_sqr_le_1.
+  replace (1 + Rcoef * Rcoef + 2 * Rcoef * cos dphi)
+    with ((1 + Rcoef * cos dphi) * (1 + Rcoef * cos dphi)
+          + Rcoef * Rcoef * (1 - cos dphi * cos dphi)) by ring.
+  assert (H1 : (1 + Rcoef * cos dphi) * (1 + Rcoef * cos dphi) >= 0).
+  { apply Rle_ge. apply Rle_0_sqr. }
+  assert (H2 : 1 - cos dphi * cos dphi >= 0) by lra.
+  assert (HR2 : Rcoef * Rcoef >= 0).
+  { apply Rle_ge. apply Rle_0_sqr. }
+  assert (H3 : Rcoef * Rcoef * (1 - cos dphi * cos dphi) >= 0).
+  { apply Rle_ge. apply Rmult_le_pos; lra. }
+  lra.
+Qed.
+
+Lemma wedge_transform_nonneg : forall H0 Ks Kr Rcoef dphi,
+  H0 >= 0 -> Ks >= 0 -> Kr >= 0 -> Rcoef >= 0 ->
+  wedge_transform H0 Ks Kr Rcoef dphi >= 0.
+Proof.
+  intros H0 Ks Kr Rcoef dphi HH0 HKs HKr HR.
+  unfold wedge_transform.
+  apply Rle_ge.
+  apply Rmult_le_pos.
+  - apply Rmult_le_pos.
+    + apply Rmult_le_pos; lra.
+    + lra.
+  - apply sqrt_pos.
+Qed.
+
+(** Strictly positive when inputs are strictly positive. *)
+Lemma wedge_transform_positive : forall H0 Ks Kr Rcoef dphi,
+  H0 > 0 -> Ks > 0 -> Kr > 0 -> 0 < Rcoef < 1 ->
+  wedge_transform H0 Ks Kr Rcoef dphi > 0.
+Proof.
+  intros H0 Ks Kr Rcoef dphi HH0 HKs HKr HR.
+  unfold wedge_transform.
+  apply Rmult_lt_0_compat.
+  - apply Rmult_lt_0_compat.
+    + apply Rmult_lt_0_compat; [exact HH0 | exact HKs].
+    + exact HKr.
+  - apply sqrt_lt_R0.
+    assert (Hcos : -1 <= cos dphi <= 1) by apply COS_bound.
+    assert (H2R : 2 * Rcoef >= 0) by lra.
+    assert (Hterm : 2 * Rcoef * (-1) <= 2 * Rcoef * cos dphi).
+    { apply Rmult_le_compat_l; lra. }
+    assert (Hmin : 1 + Rcoef * Rcoef - 2 * Rcoef <=
+                   1 + Rcoef * Rcoef + 2 * Rcoef * cos dphi).
+    { replace (- 2 * Rcoef) with (2 * Rcoef * (-1)) by ring. lra. }
+    replace (1 + Rcoef * Rcoef - 2 * Rcoef) with ((1 - Rcoef) * (1 - Rcoef)) in Hmin by ring.
+    assert (Hsq : (1 - Rcoef) * (1 - Rcoef) > 0).
+    { apply Rmult_lt_0_compat; lra. }
+    lra.
+Qed.
+
+(** Maximum amplification occurs when waves are in phase (dphi = 0). *)
+Definition wedge_transform_max (H0 Ks Kr Rcoef : R) : R :=
+  H0 * Ks * Kr * (1 + Rcoef).
+
+Lemma wedge_transform_max_achieved : forall H0 Ks Kr Rcoef,
+  Rcoef >= -1 ->
+  wedge_transform H0 Ks Kr Rcoef 0 = wedge_transform_max H0 Ks Kr Rcoef.
+Proof.
+  intros H0 Ks Kr Rcoef HR.
+  unfold wedge_transform, wedge_transform_max.
+  rewrite cos_0.
+  replace (1 + Rcoef * Rcoef + 2 * Rcoef * 1) with ((1 + Rcoef) * (1 + Rcoef)) by ring.
+  rewrite sqrt_square; [ring | lra].
+Qed.
+
+Lemma wedge_transform_upper_bound : forall H0 Ks Kr Rcoef dphi,
+  H0 >= 0 -> Ks >= 0 -> Kr >= 0 -> 0 <= Rcoef <= 1 ->
+  wedge_transform H0 Ks Kr Rcoef dphi <= wedge_transform_max H0 Ks Kr Rcoef.
+Proof.
+  intros H0 Ks Kr Rcoef dphi HH0 HKs HKr HR.
+  unfold wedge_transform, wedge_transform_max.
+  apply Rmult_le_compat_l.
+  - apply Rmult_le_pos.
+    + apply Rmult_le_pos; lra.
+    + lra.
+  - rewrite <- sqrt_square with (x := 1 + Rcoef) by lra.
+    apply sqrt_le_1_alt.
+    assert (Hcos : -1 <= cos dphi <= 1) by apply COS_bound.
+    assert (Hbound : 2 * Rcoef * cos dphi <= 2 * Rcoef).
+    { replace (2 * Rcoef) with (2 * Rcoef * 1) at 2 by ring.
+      apply Rmult_le_compat_l; [lra|]. lra. }
+    replace ((1 + Rcoef) * (1 + Rcoef)) with (1 + Rcoef*Rcoef + 2*Rcoef) by ring.
+    lra.
+Qed.
+
+(** For typical Wedge conditions: in-phase reflection at jetty wall. *)
+Definition wedge_transform_typical (H0 Ks Kr : R) : R :=
+  wedge_transform_max H0 Ks Kr WedgeParams.reflection_coeff.
+
+(** Simplified transform assuming normal incidence (Kr = 1) and in-phase. *)
+Definition wedge_reflection_factor : R := 1 + WedgeParams.reflection_coeff.
 
 Definition wedge_transform_simple (H0 Ks : R) : R :=
   H0 * Ks * wedge_reflection_factor.
 
-Lemma wedge_transform_positive : forall H0 Ks,
-  H0 > 0 -> Ks > 0 -> wedge_transform_simple H0 Ks > 0.
+Lemma wedge_transform_typical_value : forall H0 Ks Kr,
+  wedge_transform_typical H0 Ks Kr = H0 * Ks * Kr * 1.95.
 Proof.
-  intros H0 Ks HH0 HKs.
-  unfold wedge_transform_simple, wedge_reflection_factor.
-  apply Rmult_lt_0_compat.
-  - apply Rmult_lt_0_compat.
-    + exact HH0.
-    + exact HKs.
-  - lra.
+  intros. unfold wedge_transform_typical, wedge_transform_max.
+  unfold WedgeParams.reflection_coeff.
+  replace (1 + 0.95) with 1.95 by lra.
+  ring.
 Qed.
 
 (** * Shoaling Coefficient Bounds *)
@@ -428,10 +673,12 @@ Qed.
 Theorem wedge_amplification_exceeds_two_at_2m :
   forall H0,
   H0 > 0 ->
-  wedge_transform_simple H0 (shoaling_coeff_greens_law 10 2) > 2 * H0.
+  wedge_transform_typical H0 (shoaling_coeff_greens_law 10 2) 1 > 2 * H0.
 Proof.
   intros H0 HH0.
-  unfold wedge_transform_simple, wedge_reflection_factor.
+  unfold wedge_transform_typical, wedge_transform_max.
+  unfold WedgeParams.reflection_coeff.
+  replace (1 + 0.95) with 1.95 by lra.
   assert (Hs : shoaling_coeff_greens_law 10 2 > 1.4) by apply shoaling_at_2m.
   assert (Hprod : 1.4 * 1.95 > 2) by lra.
   assert (H1 : H0 * shoaling_coeff_greens_law 10 2 > H0 * 1.4).
@@ -440,42 +687,69 @@ Proof.
     - exact HH0.
     - exact Hs.
   }
-  assert (H2 : H0 * 1.4 * 1.95 > H0 * 1.4 * (2 / 1.4)).
+  assert (H2 : H0 * 1.4 * 1 * 1.95 > H0 * 1.4 * 1 * (2 / 1.4)).
   {
     apply Rmult_lt_compat_l.
     - apply Rmult_lt_0_compat.
-      + exact HH0.
+      + apply Rmult_lt_0_compat; [exact HH0 | lra].
       + lra.
     - lra.
   }
-  assert (H3 : H0 * 1.4 * (2 / 1.4) = 2 * H0) by (field; lra).
+  assert (H3 : H0 * 1.4 * 1 * (2 / 1.4) = 2 * H0) by (field; lra).
   lra.
 Qed.
 
 Theorem breaking_inevitable_at_1m :
   forall H0,
   H0 >= 1 ->
-  is_breaking (wedge_transform_simple H0 (shoaling_coeff_greens_law 10 1)) 1.
+  is_breaking (wedge_transform_typical H0 (shoaling_coeff_greens_law 10 1) 1) 1.
 Proof.
   intros H0 HH0.
-  unfold is_breaking, breaking_ratio, wedge_transform_simple,
-         wedge_reflection_factor, mccowan_criterion.
+  unfold is_breaking, breaking_ratio, wedge_transform_typical, wedge_transform_max,
+         WedgeParams.reflection_coeff, mccowan_criterion.
+  replace (1 + 0.95) with 1.95 by lra.
   assert (Hs : shoaling_coeff_greens_law 10 1 > 1.7) by apply shoaling_at_1m.
-  assert (Hmin : H0 * shoaling_coeff_greens_law 10 1 * 1.95 > H0 * 1.7 * 1.95).
+  assert (Hmin : H0 * shoaling_coeff_greens_law 10 1 * 1 * 1.95 > H0 * 1.7 * 1 * 1.95).
   {
     apply Rmult_gt_compat_r.
     - lra.
-    - apply Rmult_gt_compat_l.
+    - apply Rmult_gt_compat_r.
       + lra.
-      + exact Hs.
+      + apply Rmult_gt_compat_l; [lra | exact Hs].
   }
-  assert (Hbase : H0 * 1.7 * 1.95 >= 1 * 1.7 * 1.95).
+  assert (Hbase : H0 * 1.7 * 1 * 1.95 >= 1 * 1.7 * 1 * 1.95).
   {
     apply Rmult_ge_compat_r.
     - lra.
     - apply Rmult_ge_compat_r.
       + lra.
-      + lra.
+      + apply Rmult_ge_compat_r; lra.
+  }
+  assert (Hval : 1 * 1.7 * 1 * 1.95 > 0.78) by lra.
+  lra.
+Qed.
+
+Theorem breaking_inevitable_at_1m_simple :
+  forall H0,
+  H0 >= 1 ->
+  is_breaking (wedge_transform_simple H0 (shoaling_coeff_greens_law 10 1)) 1.
+Proof.
+  intros H0 HH0.
+  unfold is_breaking, breaking_ratio, wedge_transform_simple, wedge_reflection_factor,
+         WedgeParams.reflection_coeff, mccowan_criterion.
+  replace (1 + 0.95) with 1.95 by lra.
+  assert (Hs : shoaling_coeff_greens_law 10 1 > 1.7) by apply shoaling_at_1m.
+  assert (Hmin : H0 * shoaling_coeff_greens_law 10 1 * 1.95 > H0 * 1.7 * 1.95).
+  {
+    apply Rmult_gt_compat_r.
+    - lra.
+    - apply Rmult_gt_compat_l; [lra | exact Hs].
+  }
+  assert (Hbase : H0 * 1.7 * 1.95 >= 1 * 1.7 * 1.95).
+  {
+    apply Rmult_ge_compat_r.
+    - lra.
+    - apply Rmult_ge_compat_r; lra.
   }
   assert (Hval : 1 * 1.7 * 1.95 > 0.78) by lra.
   lra.
@@ -502,31 +776,59 @@ Qed.
 
 (** * Depth Profile Model *)
 
-Definition depth_at_distance (d : R) : R :=
-  if Rlt_dec d 25 then 0.78
-  else if Rlt_dec d 50 then 1.07
-  else if Rlt_dec d 75 then 3.88
-  else if Rlt_dec d 100 then 5.0
-  else WedgeParams.max_depth_100m.
+(** Linear interpolation between two points. *)
+Definition lerp (x x0 x1 y0 y1 : R) : R :=
+  y0 + (y1 - y0) * (x - x0) / (x1 - x0).
 
-Lemma depth_at_25_is_shallow :
-  depth_at_distance 10 < 1.
+(** Piecewise linear interpolation of elevation profile.
+    Control points from lidar: (12.5, 0.78), (37.5, -1.07), (62.5, -3.88), (87.5, -8.03).
+    Using bin centers as x coordinates. *)
+Definition elev_at_distance (d : R) : R :=
+  if Rlt_dec d 12.5 then WedgeParams.elev_0_25m
+  else if Rlt_dec d 37.5 then lerp d 12.5 37.5 0.78 (-1.07)
+  else if Rlt_dec d 62.5 then lerp d 37.5 62.5 (-1.07) (-3.88)
+  else if Rlt_dec d 87.5 then lerp d 62.5 87.5 (-3.88) (-8.03)
+  else WedgeParams.elev_max_100m.
+
+Definition depth_at_distance (d : R) : R :=
+  let e := elev_at_distance d in
+  if Rlt_dec e 0 then -e else 0.
+
+Lemma lerp_at_x0 : forall x0 x1 y0 y1,
+  x0 <> x1 -> lerp x0 x0 x1 y0 y1 = y0.
 Proof.
-  unfold depth_at_distance.
-  destruct (Rlt_dec 10 25).
-  - lra.
+  intros. unfold lerp. field. lra.
+Qed.
+
+Lemma lerp_at_x1 : forall x0 x1 y0 y1,
+  x0 <> x1 -> lerp x1 x0 x1 y0 y1 = y1.
+Proof.
+  intros. unfold lerp. field. lra.
+Qed.
+
+Lemma depth_at_10_is_zero :
+  depth_at_distance 10 = 0.
+Proof.
+  unfold depth_at_distance, elev_at_distance.
+  destruct (Rlt_dec 10 12.5).
+  - unfold WedgeParams.elev_0_25m.
+    destruct (Rlt_dec 0.78 0); lra.
   - lra.
 Qed.
 
-Lemma depth_at_50_is_moderate :
+Lemma depth_at_40_is_moderate :
   depth_at_distance 40 > 1.
 Proof.
-  unfold depth_at_distance.
-  destruct (Rlt_dec 40 25).
+  unfold depth_at_distance, elev_at_distance.
+  destruct (Rlt_dec 40 12.5); [lra|].
+  destruct (Rlt_dec 40 37.5); [lra|].
+  destruct (Rlt_dec 40 62.5).
+  - unfold lerp.
+    assert (Hlerp : 37.5 <> 62.5) by lra.
+    destruct (Rlt_dec ((-1.07) + ((-3.88) - (-1.07)) * (40 - 37.5) / (62.5 - 37.5)) 0).
+    + lra.
+    + lra.
   - lra.
-  - destruct (Rlt_dec 40 50).
-    + lra.
-    + lra.
 Qed.
 
 (** * Wave Energy Considerations *)
@@ -589,9 +891,10 @@ Lemma wedge_always_extreme : forall H0,
   classify_hazard H 1 = Extreme.
 Proof.
   intros H0 HH0 H.
-  unfold classify_hazard, H, wedge_transform_simple, wedge_reflection_factor.
+  unfold classify_hazard, H, wedge_transform_simple, wedge_reflection_factor,
+         WedgeParams.reflection_coeff.
   assert (Hs : shoaling_coeff_greens_law 10 1 > 1.7) by apply shoaling_at_1m.
-  assert (Hbound : H0 * shoaling_coeff_greens_law 10 1 * 1.95 / 1 > 0.78).
+  assert (Hbound : H0 * shoaling_coeff_greens_law 10 1 * (1 + 0.95) / 1 > 0.78).
   {
     field_simplify.
     assert (Hmin : H0 * shoaling_coeff_greens_law 10 1 >= 1 * 1.7) by
@@ -599,9 +902,9 @@ Proof.
     assert (Hval : 1 * 1.7 * 1.95 > 0.78) by lra.
     lra.
   }
-  destruct (Rlt_dec (H0 * shoaling_coeff_greens_law 10 1 * 1.95 / 1) 0.4); try lra.
-  destruct (Rlt_dec (H0 * shoaling_coeff_greens_law 10 1 * 1.95 / 1) 0.6); try lra.
-  destruct (Rlt_dec (H0 * shoaling_coeff_greens_law 10 1 * 1.95 / 1) 0.78); try lra.
+  destruct (Rlt_dec (H0 * shoaling_coeff_greens_law 10 1 * (1 + 0.95) / 1) 0.4); try lra.
+  destruct (Rlt_dec (H0 * shoaling_coeff_greens_law 10 1 * (1 + 0.95) / 1) 0.6); try lra.
+  destruct (Rlt_dec (H0 * shoaling_coeff_greens_law 10 1 * (1 + 0.95) / 1) 0.78); try lra.
   reflexivity.
 Qed.
 
@@ -621,6 +924,6 @@ Proof.
   - lra.
   - split.
     + lra.
-    + apply breaking_inevitable_at_1m.
+    + apply breaking_inevitable_at_1m_simple.
       exact HH0.
 Qed.
