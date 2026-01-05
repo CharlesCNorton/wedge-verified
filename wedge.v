@@ -272,14 +272,111 @@ Qed.
 
 (** * Shoaling Coefficient Bounds *)
 
-Axiom shoaling_at_2m : shoaling_coeff_greens_law 10 2 > 1.4.
-Axiom shoaling_at_1m : shoaling_coeff_greens_law 10 1 > 1.7.
-Axiom shoaling_at_half_m : shoaling_coeff_greens_law 10 0.5 > 2.1.
-Axiom shoaling_positive : forall h1 h2, h1 > 0 -> h2 > 0 ->
+(** We prove bounds on Rpower using the fact that for a,b > 0:
+    a^4 < b implies a < b^(1/4).
+    This follows from Rpower being strictly monotonic. *)
+
+Lemma Rpower_4 : forall a : R, a > 0 -> Rpower a 4 = a * a * a * a.
+Proof.
+  intros a Ha.
+  replace 4 with (INR 4) by (simpl; ring).
+  rewrite Rpower_pow by lra.
+  simpl. ring.
+Qed.
+
+Lemma Rpower_pos : forall x y : R, x > 0 -> Rpower x y > 0.
+Proof.
+  intros x y Hx.
+  unfold Rpower.
+  apply exp_pos.
+Qed.
+
+Lemma fourth_power_bound : forall a b : R,
+  a > 0 -> b > 0 -> a * a * a * a < b -> a < Rpower b (1/4).
+Proof.
+  intros a b Ha Hb Hpow.
+  assert (Ha4 : Rpower a 4 = a * a * a * a) by (apply Rpower_4; lra).
+  assert (Hrp : Rpower a 4 < b) by lra.
+  assert (Hpos1 : Rpower a 4 > 0) by (apply Rpower_pos; lra).
+  assert (Hinv : Rpower (Rpower a 4) (1/4) < Rpower b (1/4)).
+  {
+    apply Rlt_Rpower_l.
+    - lra.
+    - split; [exact Hpos1 | exact Hrp].
+  }
+  assert (Hsimp : Rpower (Rpower a 4) (1/4) = a).
+  {
+    rewrite Rpower_mult.
+    replace (4 * (1/4)) with 1 by field.
+    apply Rpower_1.
+    lra.
+  }
+  lra.
+Qed.
+
+Lemma shoaling_positive : forall h1 h2, h1 > 0 -> h2 > 0 ->
   shoaling_coeff_greens_law h1 h2 > 0.
-Axiom shoaling_increases_in_shallows : forall h1 h2 h3,
+Proof.
+  intros h1 h2 H1 H2.
+  unfold shoaling_coeff_greens_law.
+  apply Rpower_pos.
+  apply Rdiv_pos_pos; lra.
+Qed.
+
+Lemma shoaling_at_2m : shoaling_coeff_greens_law 10 2 > 1.4.
+Proof.
+  unfold shoaling_coeff_greens_law.
+  replace (10 / 2) with 5 by field.
+  apply fourth_power_bound.
+  - lra.
+  - lra.
+  - (* 1.4^4 = 3.8416 < 5 *)
+    lra.
+Qed.
+
+Lemma shoaling_at_1m : shoaling_coeff_greens_law 10 1 > 1.7.
+Proof.
+  unfold shoaling_coeff_greens_law.
+  replace (10 / 1) with 10 by field.
+  apply fourth_power_bound.
+  - lra.
+  - lra.
+  - (* 1.7^4 = 8.3521 < 10 *)
+    lra.
+Qed.
+
+Lemma shoaling_at_half_m : shoaling_coeff_greens_law 10 0.5 > 2.1.
+Proof.
+  unfold shoaling_coeff_greens_law.
+  replace (10 / 0.5) with 20 by lra.
+  apply fourth_power_bound.
+  - lra.
+  - lra.
+  - (* 2.1^4 = 19.4481 < 20 *)
+    lra.
+Qed.
+
+Lemma shoaling_increases_in_shallows : forall h1 h2 h3,
   h1 > 0 -> h2 > 0 -> h3 > 0 -> h2 > h3 ->
   shoaling_coeff_greens_law h1 h3 > shoaling_coeff_greens_law h1 h2.
+Proof.
+  intros h1 h2 h3 H1 H2 H3 Hlt.
+  unfold shoaling_coeff_greens_law.
+  apply Rlt_Rpower_l.
+  - lra.
+  - split.
+    + apply Rdiv_pos_pos; lra.
+    + assert (Hdiv : h1 / h2 < h1 / h3).
+      {
+        unfold Rdiv.
+        apply Rmult_lt_compat_l.
+        - lra.
+        - apply Rinv_lt_contravar.
+          + apply Rmult_lt_0_compat; lra.
+          + lra.
+      }
+      exact Hdiv.
+Qed.
 
 (** * Main Theorems *)
 
