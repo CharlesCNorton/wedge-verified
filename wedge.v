@@ -77,6 +77,51 @@
                public-works/lower-newport-bay-dredging-and-cad-project
 *)
 
+(** * TODO
+
+    1.  Fix wedge_lon sign (should be negative: -117.882).
+    2.  Fix depth sign convention (positive vs negative).
+    3.  Separate depth (always >0) from elev (signed NAVD88).
+    4.  Remove or use WaveState record and WaveState_WF predicate.
+    5.  Note bathymetry data is from 2009; consider updating or flag staleness.
+    6.  Interpolate depth profile from lidar points instead of step function.
+    7.  Verify Green's law mild-slope precondition before applying.
+    8.  Apply refracted_angle and refraction_coeff in proofs.
+    9.  Use wedge_transform with Snell's law refraction in main theorems.
+    10. Add ray-tube width / refraction coefficient to amplification model.
+    11. Expose phase term Dphi as parameter; prove A_total <= (1+R)A with
+        equality when Dphi=0.
+    12. Make reflection coefficient angle-dependent.
+    13. Make reflection coefficient a function of wave period T, not constant.
+    14. Justify 0.95 reflection for rubble-mound jetty (typical range 0.3-0.6)
+        or parameterize.
+    15. Replace Green's law with dispersion relation w^2=gk*tanh(kh) + energy
+        flux shoaling via Cg.
+    16. Add group velocity Cg for energy propagation.
+    17. Replace Green's law with Boussinesq shoaling in surf zone.
+    18. Add energy dissipation (bottom friction, turbulence).
+    19. Model diffraction around jetty terminus.
+    20. Add nonlinear wave steepening approaching breaking.
+    21. Model Mach Stem reflection (3-4x amplitude) instead of linear
+        superposition (2x).
+    22. Model wave setup/setdown (mean water level changes in surf zone).
+    23. Add wave-current interaction for ebb tide steepening.
+    24. Model spectral waves (multiple frequencies) not monochromatic.
+    25. Model directional spreading (angular spread of swell).
+    26. Model lateral 3D effects (side wash, A-frame peak geometry).
+    27. Prove Iribarren theorem connecting WedgeParams.beach_slope to Plunging
+        classification.
+    28. Generalize theorems from hardcoded depths (10, 2, 1) to forall d1 d2
+        where d1 > d2.
+    29. Replace magic constants (1.4, 1.7, 2.1) with symbolic derivations.
+    30. Add sensitivity analysis for input uncertainties.
+    31. Replace lra with nra where nonlinear arithmetic needed.
+    32. Remove field_simplify on inequalities or add explicit nonzero
+        conditions.
+    33. Document library version dependencies for Rlt_Rpower_l, Rpower_mult,
+        etc.
+*)
+
 Require Import Reals.
 Require Import Lra.
 Require Import Lia.
