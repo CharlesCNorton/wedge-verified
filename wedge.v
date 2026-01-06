@@ -119,6 +119,7 @@ Require Import Lia.
 Require Import Rfunctions.
 Require Import Rpower.
 Require Import Rtrigo.
+Require Import Rtrigo_alt.
 Require Import List.
 Import ListNotations.
 
@@ -512,16 +513,132 @@ Proof.
   rewrite <- Rsqr_def, <- Rsqr_def. apply sin2_cos2.
 Qed.
 
-(** sin(1) > cos(1) follows from the fact that 1 > PI/4 and sin is greater
-    than cos for angles greater than PI/4 in the first quadrant.
-    Numerical values: sin(1) ≈ 0.8415, cos(1) ≈ 0.5403.
-    TODO: Complete proof using power series bounds or interval arithmetic. *)
+(** To break the circular dependency between sin_1_gt_cos_1, tan_1_gt_1,
+    and one_gt_PI4, we prove PI < 4 independently using cos(2) < 0. *)
+
+(** Key bound: cos(1) < 7/10.
+    Numerical: cos(1) ≈ 0.5403 < 0.7.
+    From sin^2 + cos^2 = 1 and sin(1) > 5/6, we get cos^2(1) < 11/36.
+    The Taylor series lower bound on sin(1) via pre_sin_bound gives:
+      sin(1) >= 1 - 1^3/6 + 1^5/120 - ... > 5/6.
+    This is computationally verified but lra needs numerical help. *)
+(** sin(1) > 5/6 follows from the Taylor series via sin_bound.
+    With n=1: sin_approx 1 3 <= sin 1, where
+    sin_approx 1 3 = 1 - 1/6 + 1/120 - 1/5040 > 5/6. *)
+Lemma sin_1_gt_5_6 : sin 1 > 5/6.
+Proof.
+  assert (Hbounds : 0 <= 1 <= PI).
+  { split; [lra | generalize PI_gt_2; lra]. }
+  assert (Hsin_bound := sin_bound 1 1).
+  destruct Hbounds as [H0 HPI].
+  assert (Hlb : sin_approx 1 3 <= sin 1).
+  { apply Hsin_bound; lra. }
+  assert (Happrox : sin_approx 1 3 > 5/6).
+  { unfold sin_approx, sum_f_R0, sin_term.
+    simpl.
+    unfold Rdiv, pow.
+    lra. }
+  lra.
+Qed.
+
+Lemma cos_1_lt_07 : cos 1 < 7/10.
+Proof.
+  assert (Hcos_pos : cos 1 > 0) by apply cos_1_positive.
+  assert (Hsin_pos : sin 1 > 0) by apply sin_1_positive.
+  assert (Hsum : sin 1 * sin 1 + cos 1 * cos 1 = 1) by apply sin_cos_sum_1.
+  assert (Hsin_lower : sin 1 > 5/6) by apply sin_1_gt_5_6.
+  assert (Hsin_sq_lower : sin 1 * sin 1 > 25/36).
+  { assert (H1 : sin 1 * sin 1 > (5/6) * (5/6)).
+    { apply Rmult_gt_0_lt_compat; lra. }
+    assert (H2 : (5:R)/6 * (5/6) = 25/36) by field.
+    lra. }
+  assert (Hcos_sq_upper : cos 1 * cos 1 < 11/36) by lra.
+  assert (Hcos_upper : cos 1 < sqrt (11/36)).
+  { rewrite <- sqrt_square with (x := cos 1) by lra.
+    apply sqrt_lt_1_alt.
+    split; [apply Rmult_le_pos|]; lra. }
+  assert (Hsqrt_bound : sqrt (11/36) < 7/10).
+  { rewrite <- sqrt_square with (x := 7/10) by lra.
+    apply sqrt_lt_1_alt.
+    split; [apply Rmult_le_pos|]; lra. }
+  lra.
+Qed.
+
+(** cos(2) < 0 because cos(2) = cos^2(1) - sin^2(1) = 2*cos^2(1) - 1.
+    Since cos(1) < 0.7, we have cos^2(1) < 0.49, so
+    2*cos^2(1) - 1 < -0.02 < 0. *)
+Lemma cos_2_negative : cos 2 < 0.
+Proof.
+  assert (Hcos_1 : cos 1 < 7/10) by apply cos_1_lt_07.
+  assert (Hcos_pos : cos 1 > 0) by apply cos_1_positive.
+  assert (Hcos2a : cos (2 * 1) = cos 1 * cos 1 - sin 1 * sin 1) by apply cos_2a.
+  assert (Hsum : sin 1 * sin 1 + cos 1 * cos 1 = 1) by apply sin_cos_sum_1.
+  replace 2 with (2 * 1) by ring.
+  rewrite Hcos2a.
+  assert (Hcos_sq : cos 1 * cos 1 < 49/100).
+  { assert (H1 : cos 1 * cos 1 < (7/10) * (7/10)).
+    { apply Rmult_gt_0_lt_compat; lra. }
+    lra. }
+  assert (Hsin_sq : sin 1 * sin 1 > 51/100) by lra.
+  lra.
+Qed.
+
+(** PI < 4 follows from cos(2) < 0.
+    If PI >= 4, then PI/2 >= 2, so 2 is in [0, PI/2].
+    Since cos is nonnegative on [0, PI/2], cos(2) >= 0.
+    But cos(2) < 0, contradiction. Hence PI < 4. *)
+Lemma PI_lt_4_direct : PI < 4.
+Proof.
+  assert (Hcos2 : cos 2 < 0) by apply cos_2_negative.
+  assert (HPI_gt_2 : PI > 2) by apply PI_gt_2.
+  destruct (Rlt_dec PI 4) as [Hlt|Hge].
+  - exact Hlt.
+  - assert (HPI_ge_4 : PI >= 4) by lra.
+    assert (HPI2_ge_2 : PI/2 >= 2) by lra.
+    assert (H0_le_2 : 0 <= 2) by lra.
+    assert (Hcos2_ge_0 : cos 2 >= 0).
+    { apply Rle_ge.
+      apply cos_ge_0; lra. }
+    lra.
+Qed.
+
+Lemma one_gt_PI4_direct : 1 > PI / 4.
+Proof.
+  generalize PI_lt_4_direct. lra.
+Qed.
+
+(** sin x - cos x = sqrt(2) * sin(x - PI/4) for all x. *)
+Lemma sin_minus_cos_formula_early : forall x,
+  sin x - cos x = sqrt 2 * sin (x - PI/4).
+Proof.
+  intro x.
+  rewrite sin_minus.
+  assert (Hsin_PI4 : sin (PI/4) = 1 / sqrt 2) by apply sin_PI4.
+  assert (Hcos_PI4 : cos (PI/4) = 1 / sqrt 2) by apply cos_PI4.
+  rewrite Hsin_PI4, Hcos_PI4.
+  assert (Hsqrt2_pos : sqrt 2 > 0) by (apply sqrt_lt_R0; lra).
+  field.
+  lra.
+Qed.
 
 Lemma sin_1_gt_cos_1 : sin 1 > cos 1.
 Proof.
-  assert (Hsin_pos : sin 1 > 0) by apply sin_1_positive.
-  assert (Hcos_pos : cos 1 > 0) by apply cos_1_positive.
-Admitted.
+  assert (Hformula : sin 1 - cos 1 = sqrt 2 * sin (1 - PI/4))
+    by apply sin_minus_cos_formula_early.
+  assert (Hone_gt : 1 > PI/4) by apply one_gt_PI4_direct.
+  assert (Harg_pos : 1 - PI/4 > 0) by lra.
+  assert (Harg_lt_pi : 1 - PI/4 < PI).
+  { assert (HPI_gt_2 : PI > 2) by apply PI_gt_2.
+    lra. }
+  assert (Hsin_arg : sin (1 - PI/4) > 0).
+  { apply sin_gt_0.
+    - exact Harg_pos.
+    - exact Harg_lt_pi. }
+  assert (Hsqrt2_pos : sqrt 2 > 0) by (apply sqrt_lt_R0; lra).
+  assert (Hprod_pos : sqrt 2 * sin (1 - PI/4) > 0).
+  { apply Rmult_lt_0_compat; lra. }
+  lra.
+Qed.
 
 Lemma tan_1_gt_1 : tan 1 > 1.
 Proof.
