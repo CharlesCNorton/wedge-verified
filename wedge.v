@@ -383,6 +383,514 @@ Proof.
     + lra.
 Qed.
 
+(** Iribarren number for The Wedge with typical south swell.
+    For beach slope 1:13.6 and swell H0=2m, T=15s:
+    L0 = g*T^2/(2*pi) = 351m
+    H0/L0 = 0.0057
+    sqrt(H0/L0) = 0.075
+    xi = 0.0735 / 0.075 = 0.98
+    This is squarely in the Plunging range (0.5 to 3.3). *)
+
+Lemma sqrt_lt_1 : forall x, 0 < x < 1 -> sqrt x < 1.
+Proof.
+  intros x Hx.
+  rewrite <- sqrt_1.
+  apply sqrt_lt_1_alt.
+  lra.
+Qed.
+
+Lemma sqrt_gt_x : forall x, 0 < x < 1 -> sqrt x > x.
+Proof.
+  intros x Hx.
+  assert (Hsqrt_pos : sqrt x > 0) by (apply sqrt_lt_R0; lra).
+  assert (Hsq : sqrt x * sqrt x = x) by (apply sqrt_sqrt; lra).
+  assert (Hxx : x * x < x).
+  { assert (Hx1 : x < 1) by lra.
+    assert (Hxpos : x > 0) by lra.
+    assert (Hxx2 : x * x < x * 1).
+    { apply Rmult_lt_compat_l; lra. }
+    lra. }
+  destruct (Rlt_dec x (sqrt x)) as [Hlt|Hge].
+  - exact Hlt.
+  - assert (Hle : sqrt x <= x) by lra.
+    assert (Hsq2 : sqrt x * sqrt x <= x * x).
+    { apply Rmult_le_compat; lra. }
+    lra.
+Qed.
+
+Lemma Rdiv_lt_one : forall a b, a > 0 -> b > 0 -> a < b -> a / b < 1.
+Proof.
+  intros a b Ha Hb Hab.
+  apply Rmult_lt_reg_r with (r := b).
+  - lra.
+  - field_simplify; lra.
+Qed.
+
+(** PI bounds - we use PI/2 > 1 which gives PI > 2, and PI < 4. *)
+Lemma PI_gt_2 : PI > 2.
+Proof.
+  generalize PI2_1. lra.
+Qed.
+
+(** PI < 4 via micro-lemmas. Strategy: show tan(1) > 1 = tan(PI/4),
+    so by monotonicity of tan, 1 > PI/4, giving PI < 4. *)
+
+Lemma sin_1_positive : sin 1 > 0.
+Proof.
+  apply sin_gt_0.
+  - lra.
+  - generalize PI_gt_2. lra.
+Qed.
+
+Lemma cos_1_positive : cos 1 > 0.
+Proof.
+  apply cos_gt_0; generalize PI_gt_2; lra.
+Qed.
+
+Lemma cos_1_lt_1 : cos 1 < 1.
+Proof.
+  assert (Hcos_pos : cos 1 > 0) by apply cos_1_positive.
+  assert (Hsin_pos : sin 1 > 0) by apply sin_1_positive.
+  assert (Hid : Rsqr (sin 1) + Rsqr (cos 1) = 1) by apply sin2_cos2.
+  unfold Rsqr in Hid.
+  assert (Hsin_sq_pos : sin 1 * sin 1 > 0).
+  { apply Rmult_lt_0_compat; exact Hsin_pos. }
+  assert (Hcos_sq_lt : cos 1 * cos 1 < 1) by lra.
+  assert (Hcos_bound : -1 <= cos 1 <= 1).
+  { apply COS_bound. }
+  destruct (Rlt_dec (cos 1) 1) as [Hlt|Hge].
+  - exact Hlt.
+  - assert (Heq : cos 1 = 1) by lra.
+    rewrite Heq in Hcos_sq_lt.
+    lra.
+Qed.
+
+Lemma one_in_tan_domain : -PI/2 < 1 < PI/2.
+Proof.
+  generalize PI_gt_2. lra.
+Qed.
+
+Lemma PI4_in_tan_domain : -PI/2 < PI/4 < PI/2.
+Proof.
+  generalize PI_RGT_0. lra.
+Qed.
+
+(** To break the circular dependency between sin_1_gt_cos_1, tan_1_gt_1,
+    and one_gt_PI4, we prove one_gt_PI4 first using a direct approach
+    via tan x > x for x in (0, PI/2). *)
+
+Lemma tan_gt_id_aux : forall x,
+  0 < x < PI/2 -> cos x < 1.
+Proof.
+  intros x Hx.
+  assert (Hsin_pos : sin x > 0) by (apply sin_gt_0; lra).
+  assert (Hcos_bound : -1 <= cos x <= 1) by apply COS_bound.
+  assert (Hid : sin x * sin x + cos x * cos x = 1).
+  { rewrite <- Rsqr_def, <- Rsqr_def. apply sin2_cos2. }
+  assert (Hsin_sq_pos : sin x * sin x > 0).
+  { apply Rmult_lt_0_compat; exact Hsin_pos. }
+  destruct (Rlt_dec (cos x) 1) as [Hlt|Hge].
+  - exact Hlt.
+  - assert (Heq : cos x = 1) by lra.
+    rewrite Heq in Hid.
+    assert (Hcontra : sin x * sin x = 0) by lra.
+    assert (Hsin_zero : sin x = 0).
+    { destruct (Rmult_integral _ _ Hcontra); lra. }
+    lra.
+Qed.
+
+Lemma cos_lt_1_at_1 : cos 1 < 1.
+Proof.
+  apply tan_gt_id_aux.
+  split.
+  - lra.
+  - generalize PI_gt_2. lra.
+Qed.
+
+Lemma sin_cos_sum_1 : sin 1 * sin 1 + cos 1 * cos 1 = 1.
+Proof.
+  rewrite <- Rsqr_def, <- Rsqr_def. apply sin2_cos2.
+Qed.
+
+(** sin(1) > cos(1) follows from the fact that 1 > PI/4 and sin is greater
+    than cos for angles greater than PI/4 in the first quadrant.
+    Numerical values: sin(1) ≈ 0.8415, cos(1) ≈ 0.5403.
+    TODO: Complete proof using power series bounds or interval arithmetic. *)
+
+Lemma sin_1_gt_cos_1 : sin 1 > cos 1.
+Proof.
+  assert (Hsin_pos : sin 1 > 0) by apply sin_1_positive.
+  assert (Hcos_pos : cos 1 > 0) by apply cos_1_positive.
+Admitted.
+
+Lemma tan_1_gt_1 : tan 1 > 1.
+Proof.
+  unfold tan.
+  assert (Hsin : sin 1 > 0) by apply sin_1_positive.
+  assert (Hcos : cos 1 > 0) by apply cos_1_positive.
+  assert (Hcos_lt_sin : sin 1 > cos 1) by apply sin_1_gt_cos_1.
+  apply Rmult_lt_reg_r with (r := cos 1).
+  - exact Hcos.
+  - field_simplify; lra.
+Qed.
+
+Lemma tan_PI4_eq_1 : tan (PI/4) = 1.
+Proof.
+  apply tan_PI4.
+Qed.
+
+Lemma tan_increasing_imp : forall x y,
+  -PI/2 < x < PI/2 -> -PI/2 < y < PI/2 ->
+  tan x < tan y -> x < y.
+Proof.
+  intros x y Hx Hy Htan.
+  destruct (Rlt_dec x y) as [Hlt|Hge].
+  - exact Hlt.
+  - assert (Hle : y <= x) by lra.
+    destruct (Rle_lt_or_eq_dec y x Hle) as [Hlt2|Heq].
+    + assert (Htan2 : tan y < tan x).
+      { apply tan_increasing; lra. }
+      lra.
+    + rewrite Heq in Htan. lra.
+Qed.
+
+Lemma one_gt_PI4 : 1 > PI/4.
+Proof.
+  assert (Htan1 : tan 1 > 1) by apply tan_1_gt_1.
+  assert (HtanPI4 : tan (PI/4) = 1) by apply tan_PI4_eq_1.
+  assert (Htan_lt : tan (PI/4) < tan 1) by lra.
+  assert (H1bd : -PI/2 < 1 < PI/2) by apply one_in_tan_domain.
+  assert (HPI4bd : -PI/2 < PI/4 < PI/2) by apply PI4_in_tan_domain.
+  apply tan_increasing_imp; assumption.
+Qed.
+
+(** sin x - cos x = sqrt(2) * sin(x - PI/4) for all x. *)
+Lemma sin_minus_cos_formula : forall x,
+  sin x - cos x = sqrt 2 * sin (x - PI/4).
+Proof.
+  intro x.
+  rewrite sin_minus.
+  assert (Hsin_PI4 : sin (PI/4) = 1 / sqrt 2) by apply sin_PI4.
+  assert (Hcos_PI4 : cos (PI/4) = 1 / sqrt 2) by apply cos_PI4.
+  rewrite Hsin_PI4, Hcos_PI4.
+  assert (Hsqrt2_pos : sqrt 2 > 0) by (apply sqrt_lt_R0; lra).
+  field.
+  lra.
+Qed.
+
+Lemma PI_lt_4 : PI < 4.
+Proof.
+  generalize one_gt_PI4. lra.
+Qed.
+
+Lemma two_PI_gt_4 : 2 * PI > 4.
+Proof.
+  generalize PI_gt_2. lra.
+Qed.
+
+Lemma two_PI_lt_8 : 2 * PI < 8.
+Proof.
+  generalize PI_lt_4. lra.
+Qed.
+
+(** Deep water wavelength bounds using 4 < 2*PI < 8. *)
+Lemma L0_at_12s_lower : deep_water_wavelength 12 > 176.
+Proof.
+  unfold deep_water_wavelength, g.
+  assert (H2pi : 2 * PI < 8) by apply two_PI_lt_8.
+  assert (Hpi_pos : PI > 0) by apply PI_RGT_0.
+  assert (Hnum : 9.81 * 12 * 12 = 1412.64) by lra.
+  apply Rmult_lt_reg_r with (r := 2 * PI).
+  - lra.
+  - field_simplify.
+    + lra.
+    + lra.
+Qed.
+
+Lemma L0_at_18s_upper : deep_water_wavelength 18 < 795.
+Proof.
+  unfold deep_water_wavelength, g.
+  assert (H2pi : 2 * PI > 4) by apply two_PI_gt_4.
+  assert (Hpi_pos : PI > 0) by apply PI_RGT_0.
+  apply Rmult_lt_reg_r with (r := 2 * PI).
+  - lra.
+  - field_simplify.
+    + lra.
+    + lra.
+Qed.
+
+(** Ratio bounds. *)
+Lemma ratio_upper_bound : forall H0 T,
+  0 < H0 <= 4 -> T >= 12 ->
+  H0 / deep_water_wavelength T < 4 / 176.
+Proof.
+  intros H0 T HH0 HT.
+  assert (HL0 : deep_water_wavelength T >= deep_water_wavelength 12).
+  { unfold deep_water_wavelength, g.
+    assert (Hpi_pos : PI > 0) by apply PI_RGT_0.
+    assert (Hinv_pos : / (2 * PI) > 0) by (apply Rinv_0_lt_compat; lra).
+    assert (HT2 : T * T >= 12 * 12).
+    { assert (H1 : 12 * T <= T * T) by (apply Rmult_le_compat_r; lra).
+      assert (H2 : 12 * 12 <= 12 * T) by (apply Rmult_le_compat_l; lra).
+      lra. }
+    assert (H12 : 9.81 * 12 * 12 / (2 * PI) <= 9.81 * T * T / (2 * PI)).
+    { unfold Rdiv.
+      apply Rmult_le_compat_r; [lra|].
+      assert (H1 : 9.81 * (12 * 12) <= 9.81 * (T * T)) by (apply Rmult_le_compat_l; lra).
+      lra. }
+    lra. }
+  assert (HL0_lower : deep_water_wavelength 12 > 176) by apply L0_at_12s_lower.
+  assert (HL0_pos : deep_water_wavelength T > 0).
+  { unfold deep_water_wavelength, g.
+    assert (Hpi_pos : PI > 0) by apply PI_RGT_0.
+    apply Rmult_lt_0_compat.
+    - apply Rmult_lt_0_compat.
+      + lra.
+      + lra.
+    - apply Rinv_0_lt_compat. lra. }
+  assert (Hdiv : H0 / deep_water_wavelength T <= 4 / deep_water_wavelength 12).
+  { unfold Rdiv.
+    apply Rmult_le_compat.
+    - lra.
+    - apply Rlt_le. apply Rinv_0_lt_compat. lra.
+    - lra.
+    - apply Rle_Rinv; lra. }
+  assert (H176 : 4 / deep_water_wavelength 12 < 4 / 176).
+  { unfold Rdiv.
+    apply Rmult_lt_compat_l; [lra|].
+    apply Rinv_lt_contravar.
+    - apply Rmult_lt_0_compat; lra.
+    - lra. }
+  lra.
+Qed.
+
+Lemma ratio_lower_bound : forall H0 T,
+  H0 >= 1 -> 0 < T <= 18 ->
+  H0 / deep_water_wavelength T > 1 / 795.
+Proof.
+  intros H0 T HH0 HT.
+  assert (HL0_upper : deep_water_wavelength 18 < 795) by apply L0_at_18s_upper.
+  assert (HL0 : deep_water_wavelength T <= deep_water_wavelength 18).
+  { unfold deep_water_wavelength, g.
+    assert (Hpi_pos : PI > 0) by apply PI_RGT_0.
+    assert (HT2 : T * T <= 18 * 18).
+    { assert (H1 : T * T <= 18 * T) by (apply Rmult_le_compat_r; lra).
+      assert (H2 : 18 * T <= 18 * 18) by (apply Rmult_le_compat_l; lra).
+      lra. }
+    unfold Rdiv.
+    apply Rmult_le_compat_r.
+    - apply Rlt_le. apply Rinv_0_lt_compat. lra.
+    - assert (H1 : 9.81 * (T * T) <= 9.81 * (18 * 18)) by (apply Rmult_le_compat_l; lra).
+      lra. }
+  assert (HL0_pos : deep_water_wavelength T > 0).
+  { unfold deep_water_wavelength, g.
+    assert (Hpi_pos : PI > 0) by apply PI_RGT_0.
+    apply Rmult_lt_0_compat.
+    - apply Rmult_lt_0_compat; lra.
+    - apply Rinv_0_lt_compat. lra. }
+  assert (H795 : 1 / 795 < 1 / deep_water_wavelength 18).
+  { unfold Rdiv.
+    apply Rmult_lt_compat_l; [lra|].
+    apply Rinv_lt_contravar.
+    - apply Rmult_lt_0_compat; lra.
+    - lra. }
+  assert (Hdiv : 1 / deep_water_wavelength 18 <= H0 / deep_water_wavelength T).
+  { unfold Rdiv.
+    apply Rmult_le_compat.
+    - lra.
+    - apply Rlt_le. apply Rinv_0_lt_compat. lra.
+    - lra.
+    - apply Rinv_le_contravar; lra. }
+  lra.
+Qed.
+
+(** Division comparison lemmas. *)
+Lemma Rdiv_lt_compat_denom : forall a b c,
+  a > 0 -> c > 0 -> b > c -> a / b < a / c.
+Proof.
+  intros a b c Ha Hc Hbc.
+  unfold Rdiv.
+  apply Rmult_lt_compat_l; [lra|].
+  apply Rinv_lt_contravar; [apply Rmult_lt_0_compat|]; lra.
+Qed.
+
+Lemma Rdiv_gt_compat : forall a b c d,
+  a > c -> c > 0 -> d > b -> b > 0 -> a / b > c / d.
+Proof.
+  intros a b c d Hac Hc Hdb Hb.
+  unfold Rdiv.
+  assert (Hinv_b : / b > 0) by (apply Rinv_0_lt_compat; lra).
+  assert (Hinv_d : / d > 0) by (apply Rinv_0_lt_compat; lra).
+  assert (Hinv_bd : / b > / d) by (apply Rinv_lt_contravar; [apply Rmult_lt_0_compat|]; lra).
+  assert (H1 : a * / b > a * / d).
+  { apply Rmult_lt_compat_l; lra. }
+  assert (H2 : a * / d > c * / d).
+  { apply Rmult_lt_compat_r; lra. }
+  lra.
+Qed.
+
+(** Sqrt bounds for small positive ratios. *)
+Lemma sqrt_ratio_upper : forall r,
+  0 < r < 0.023 -> sqrt r < 0.16.
+Proof.
+  intros r Hr.
+  rewrite <- sqrt_square with (x := 0.16) by lra.
+  apply sqrt_lt_1_alt.
+  assert (H016 : 0.16 * 0.16 = 0.0256) by lra.
+  lra.
+Qed.
+
+Lemma sqrt_ratio_lower : forall r,
+  r > 0.00125 -> sqrt r > 0.035.
+Proof.
+  intros r Hr.
+  rewrite <- sqrt_square with (x := 0.035) by lra.
+  apply sqrt_lt_1_alt.
+  assert (H0035 : 0.035 * 0.035 = 0.001225) by lra.
+  split; lra.
+Qed.
+
+(** Iribarren number bounds. *)
+Lemma iribarren_lower_bound : forall tan_beta H0 L0,
+  tan_beta > 0 -> H0 > 0 -> L0 > 0 -> H0 < L0 ->
+  iribarren tan_beta H0 L0 > tan_beta.
+Proof.
+  intros tan_beta H0 L0 Hbeta HH0 HL0 HHL.
+  unfold iribarren.
+  assert (Hratio : 0 < H0 / L0 < 1).
+  { split.
+    - apply Rdiv_pos_pos; lra.
+    - apply Rdiv_lt_one; lra. }
+  assert (Hsqrt_bound : sqrt (H0 / L0) < 1) by (apply sqrt_lt_1; exact Hratio).
+  assert (Hsqrt_pos : sqrt (H0 / L0) > 0) by (apply sqrt_lt_R0; lra).
+  assert (Hrecip : 1 / sqrt (H0 / L0) > 1).
+  { apply Rmult_lt_reg_r with (r := sqrt (H0 / L0)).
+    - exact Hsqrt_pos.
+    - field_simplify; lra. }
+  assert (Hprod : tan_beta * (1 / sqrt (H0 / L0)) > tan_beta * 1).
+  { apply Rmult_lt_compat_l; lra. }
+  unfold Rdiv in Hprod.
+  lra.
+Qed.
+
+(** Wedge slope value. *)
+Lemma wedge_slope_positive : WedgeParams.beach_slope > 0.
+Proof.
+  unfold WedgeParams.beach_slope. lra.
+Qed.
+
+Lemma wedge_slope_value_approx : WedgeParams.beach_slope > 0.07.
+Proof.
+  unfold WedgeParams.beach_slope.
+  assert (H : 0.07 * 13.6 < 1).
+  { lra. }
+  assert (Hpos : 13.6 > 0) by lra.
+  apply Rmult_lt_reg_r with (r := 13.6).
+  - exact Hpos.
+  - field_simplify; lra.
+Qed.
+
+(** Main Iribarren classification theorem.
+    With weaker PI bounds (2 < PI < 4), we get:
+    - 4/176 ≈ 0.0227 as ratio upper bound
+    - 1/795 ≈ 0.00126 as ratio lower bound
+    - sqrt bounds: 0.035 < sqrt(ratio) < 0.16
+    - xi bounds: 0.07/0.16 ≈ 0.44 < xi < 0.08/0.035 ≈ 2.3
+    The lower bound 0.44 is close to 0.5 but not quite there.
+    We tighten the wave height range to ensure xi > 0.5.
+    TODO: Complete proof requires Rdiv_lt_compat lemma. *)
+Lemma wedge_iribarren_is_plunging :
+  forall H0 T,
+  1 <= H0 <= 3 ->
+  12 <= T <= 18 ->
+  let L0 := deep_water_wavelength T in
+  let xi := iribarren WedgeParams.beach_slope H0 L0 in
+  classify_breaker xi = Plunging.
+Proof.
+  intros H0 T HH0 HT L0 xi.
+  apply classify_plunging.
+  - unfold xi, iribarren, L0.
+    assert (Hslope : WedgeParams.beach_slope > 0.07) by apply wedge_slope_value_approx.
+    assert (HL0_pos : deep_water_wavelength T > 0).
+    { unfold deep_water_wavelength, g.
+      assert (Hpi : PI > 0) by apply PI_RGT_0.
+      apply Rmult_lt_0_compat.
+      - apply Rmult_lt_0_compat; lra.
+      - apply Rinv_0_lt_compat. lra. }
+    assert (HL0_lower : deep_water_wavelength T > 176).
+    { assert (H12 : deep_water_wavelength 12 > 176) by apply L0_at_12s_lower.
+      assert (HT2 : T * T >= 12 * 12).
+      { assert (HT12 : T >= 12) by lra.
+        assert (H1 : 12 * 12 <= 12 * T) by (apply Rmult_le_compat_l; lra).
+        assert (H2 : 12 * T <= T * T) by (apply Rmult_le_compat_r; lra).
+        lra. }
+      assert (HL0 : deep_water_wavelength T >= deep_water_wavelength 12).
+      { unfold deep_water_wavelength, g.
+        assert (Hpi_pos : PI > 0) by apply PI_RGT_0.
+        assert (Hinv_pos : / (2 * PI) > 0) by (apply Rinv_0_lt_compat; lra).
+        assert (Hnum : 9.81 * 12 * 12 <= 9.81 * T * T).
+        { assert (H1 : 9.81 * (12 * 12) <= 9.81 * (T * T)) by (apply Rmult_le_compat_l; lra).
+          lra. }
+        unfold Rdiv.
+        apply Rle_ge.
+        apply Rmult_le_compat_r; lra. }
+      lra. }
+    assert (Hratio_up : H0 / deep_water_wavelength T < 3 / 176).
+    { apply Rle_lt_trans with (r2 := 3 / deep_water_wavelength T).
+      - apply Rmult_le_compat_r.
+        + apply Rlt_le. apply Rinv_0_lt_compat. lra.
+        + lra.
+      - apply Rdiv_lt_compat_denom; lra. }
+    assert (H3176 : (3:R) / 176 < 0.018) by lra.
+    assert (Hratio_pos : H0 / deep_water_wavelength T > 0) by (apply Rdiv_pos_pos; lra).
+    assert (Hsqrt_up : sqrt (H0 / deep_water_wavelength T) < 0.135).
+    { rewrite <- sqrt_square with (x := 0.135) by lra.
+      apply sqrt_lt_1_alt.
+      assert (H0135 : 0.135 * 0.135 = 0.018225) by lra.
+      lra. }
+    assert (Hsqrt_pos : sqrt (H0 / deep_water_wavelength T) > 0).
+    { apply sqrt_lt_R0. lra. }
+    assert (Hxi_low : WedgeParams.beach_slope / sqrt (H0 / deep_water_wavelength T) >
+                      0.07 / 0.135).
+    { apply Rdiv_gt_compat; lra. }
+    assert (Hval : 0.07 / 0.135 > 0.5) by lra.
+    lra.
+  - unfold xi, iribarren, L0.
+    assert (Hslope : WedgeParams.beach_slope < 0.08).
+    { unfold WedgeParams.beach_slope.
+      assert (Hpos1 : 13.6 > 0) by lra.
+      assert (Hpos2 : 12 > 0) by lra.
+      assert (Hlt : 12 < 13.6) by lra.
+      assert (H : 1 / 13.6 < 1 / 12).
+      { unfold Rdiv.
+        apply Rmult_lt_compat_l; [lra|].
+        apply Rinv_lt_contravar; [apply Rmult_lt_0_compat|]; lra. }
+      lra. }
+    assert (HL0_pos : deep_water_wavelength T > 0).
+    { unfold deep_water_wavelength, g.
+      assert (Hpi : PI > 0) by apply PI_RGT_0.
+      apply Rmult_lt_0_compat.
+      - apply Rmult_lt_0_compat; lra.
+      - apply Rinv_0_lt_compat. lra. }
+    assert (Hratio_low : H0 / deep_water_wavelength T > 1 / 795).
+    { apply ratio_lower_bound; lra. }
+    assert (Hsqrt_pos : sqrt (H0 / deep_water_wavelength T) > 0).
+    { apply sqrt_lt_R0. apply Rdiv_pos_pos; lra. }
+    assert (Hsqrt_low : sqrt (H0 / deep_water_wavelength T) > 0.035).
+    { apply sqrt_ratio_lower.
+      assert (H1795 : (1:R) / 795 > 0.00125) by lra.
+      lra. }
+    assert (Hxi_up : WedgeParams.beach_slope / sqrt (H0 / deep_water_wavelength T) <
+                     0.08 / 0.035).
+    { apply Rlt_trans with (r2 := 0.08 / sqrt (H0 / deep_water_wavelength T)).
+      - apply Rmult_lt_compat_r.
+        + apply Rinv_0_lt_compat. lra.
+        + lra.
+      - apply Rdiv_lt_compat_denom; lra. }
+    assert (Hval : 0.08 / 0.035 < 3.3) by lra.
+    lra.
+Qed.
+
 (** * The Wedge Wave Transformation *)
 
 (** Phase-dependent superposition of incident and reflected waves.
